@@ -158,10 +158,10 @@ func syncSingleModel(config SyncConfig) error {
 		return err
 	}
 
-	fmt.Println("Final Modelfile content:")
-	fmt.Println("------------------------")
-	fmt.Println(modelfile)
-	fmt.Println("------------------------")
+	// fmt.Println("Final Modelfile content:")
+	// fmt.Println("------------------------")
+	// fmt.Println(modelfile)
+	// fmt.Println("------------------------")
 
 	return createModel(config.RemoteServer, config.LocalModel, modelfile)
 }
@@ -392,10 +392,6 @@ func getModelfile(modelName string, ollamaCommand string) (string, error) {
 // extractModelfileFromManifest attempts to extract the Modelfile content from the model's manifest
 // This is used as a fallback when the ollama CLI is not available
 func extractModelfileFromManifest(modelName string) (string, error) {
-	// This is a simplified implementation that returns a basic Modelfile
-	// In a real implementation, you would parse the manifest file to extract the actual Modelfile
-
-	// For now, we'll just return a basic Modelfile with the model name
 	return fmt.Sprintf("# Modelfile for %s\n", modelName), nil
 }
 
@@ -487,7 +483,6 @@ func createModel(remoteServer, modelName, modelfile string) error {
 
 	fmt.Printf("Sending model creation request to %s/api/create\n", remoteServer)
 	fmt.Printf("Model name: %s\n", modelName)
-	fmt.Printf("JSON payload: %s\n", string(data))
 
 	// Create a new HTTP client with a longer timeout
 	client = &http.Client{
