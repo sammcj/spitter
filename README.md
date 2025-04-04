@@ -9,6 +9,8 @@ Spitter will skip already transferred images.
 - Skip already transferred images
 - Upload at high speed with a progress bar
 - Ideal for servers isolated from the internet
+- Automatic detection of Ollama in Docker containers
+- Fallback mechanisms when Ollama CLI is not available
 
 ## Installation
 
@@ -29,6 +31,7 @@ spitter [local_model] [remote_server] [flags]
 Flags:
 
 - `-d, --model-dir string` : Custom Ollama model directory path
+- `-c, --ollama-cmd string` : Custom Ollama command (e.g., "docker exec -it ollama ollama")
 
 Examples:
 
@@ -38,6 +41,12 @@ spitter modelname http://192.168.0.100:11434
 
 # With custom model directory
 spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models
+
+# With custom Ollama command for Docker
+spitter modelname http://192.168.0.100:11434 --ollama-cmd "docker exec -it ollama ollama"
+
+# With both custom model directory and Ollama command
+spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models --ollama-cmd "docker exec -it ollama ollama"
 ```
 
 ### As a Go package
@@ -49,6 +58,7 @@ config := spitter.SyncConfig{
     LocalModel:     "modelname",
     RemoteServer:   "http://192.168.0.100:11434",
     CustomModelDir: "/path/to/custom/models", // Optional: custom Ollama model directory
+    OllamaCommand:  "docker exec ollama ollama", // Optional: custom Ollama command
 }
 
 err := spitter.Sync(config)

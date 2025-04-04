@@ -10,6 +10,7 @@ import (
 
 func main() {
 	var customModelDir string
+	var ollamaCommand string
 
 	var rootCmd = &cobra.Command{
 		Use:   "spitter [local_model] [remote_server]",
@@ -21,6 +22,7 @@ func main() {
 				LocalModel:     args[0],
 				RemoteServer:   args[1],
 				CustomModelDir: customModelDir,
+				OllamaCommand:  ollamaCommand,
 			}
 			return spitter.Sync(config)
 		},
@@ -28,6 +30,7 @@ func main() {
 
 	// Add flags
 	rootCmd.Flags().StringVarP(&customModelDir, "model-dir", "d", "", "Custom Ollama model directory path")
+	rootCmd.Flags().StringVarP(&ollamaCommand, "ollama-cmd", "c", "", "Custom Ollama command (e.g., \"docker exec -it ollama ollama\")")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

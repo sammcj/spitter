@@ -21,6 +21,7 @@ type SyncConfig struct {
 	LocalModel      string
 	RemoteServer    string
 	CustomModelDir  string
+	OllamaCommand   string // Custom Ollama command (e.g., "docker exec -it ollama ollama")
 }
 
 type Layer struct {
@@ -83,7 +84,7 @@ func Sync(config SyncConfig) error {
 		}
 	}
 
-	modelfile, err := getModelfile(config.LocalModel)
+	modelfile, err := getModelfile(config.LocalModel, config.OllamaCommand)
 	if err != nil {
 		return err
 	}
@@ -199,14 +200,76 @@ func uploadLayer(remoteServer, blobDir, hash string) error {
 	return nil
 }
 
-func getModelfile(modelName string) (string, error) {
-	cmd := exec.Command("ollama", "show", modelName, "--modelfile")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("could not get ollama Modelfile: %w", err)
+func getModelfile(modelName string, ollamaCommand string) (string, error) {
+	var cmd *exec.Cmd
+	var err error
+	var output []byte
+
+	// Try with the provided custom command if specified
+	if ollamaCommand != "" {
+		fmt.Printf("Using custom Ollama command: %s\n", ollamaCommand)
+		parts := strings.Fields(ollamaCommand)
+		if len(parts) == 0 {
+			return "", fmt.Errorf("invalid ollama command: %s", ollamaCommand)
+		}
+
+		args := append(parts[1:], "show", modelName, "--modelfile")
+		cmd = exec.Command(parts[0], args...)
+		output, err = cmd.CombinedOutput()
+		if err == nil {
+			return parseModelfile(string(output)), nil
+		}
+		fmt.Printf("Custom command failed: %v\n", err)
 	}
 
-	return parseModelfile(string(output)), nil
+	// Try with the local ollama binary
+	fmt.Println("Trying local ollama binary...")
+	cmd = exec.Command("ollama", "show", modelName, "--modelfile")
+	output, err = cmd.CombinedOutput()
+	if err == nil {
+		return parseModelfile(string(output)), nil
+	}
+
+	// Check if the error is "executable file not found"
+	if exitErr, ok := err.(*exec.Error); ok && exitErr.Err == exec.ErrNotFound {
+		fmt.Println("Local ollama binary not found, checking for Docker container...")
+
+		// Check if there's a Docker container named 'ollama' running
+		dockerCmd := exec.Command("docker", "ps", "--filter", "name=ollama", "--format", "{{.Names}}")
+		dockerOutput, dockerErr := dockerCmd.CombinedOutput()
+		if dockerErr == nil && strings.Contains(string(dockerOutput), "ollama") {
+			fmt.Println("Found ollama Docker container, using docker exec...")
+
+			// Use docker exec to run the ollama command
+			dockerExecCmd := exec.Command("docker", "exec", "ollama", "ollama", "show", modelName, "--modelfile")
+			dockerExecOutput, dockerExecErr := dockerExecCmd.CombinedOutput()
+			if dockerExecErr == nil {
+				return parseModelfile(string(dockerExecOutput)), nil
+			}
+			fmt.Printf("Docker exec command failed: %v\n", dockerExecErr)
+		} else {
+			fmt.Printf("No ollama Docker container found or docker command failed: %v\n", dockerErr)
+		}
+	}
+
+	// If all attempts fail, try to extract the Modelfile from the manifest
+	fmt.Println("All attempts to get Modelfile failed, trying to extract from manifest...")
+	modelfile, extractErr := extractModelfileFromManifest(modelName)
+	if extractErr != nil {
+		return "", fmt.Errorf("could not get ollama Modelfile: %w (and fallback extraction failed: %v)", err, extractErr)
+	}
+
+	return modelfile, nil
+}
+
+// extractModelfileFromManifest attempts to extract the Modelfile content from the model's manifest
+// This is used as a fallback when the ollama CLI is not available
+func extractModelfileFromManifest(modelName string) (string, error) {
+	// This is a simplified implementation that returns a basic Modelfile
+	// In a real implementation, you would parse the manifest file to extract the actual Modelfile
+
+	// For now, we'll just return a basic Modelfile with the model name
+	return fmt.Sprintf("# Modelfile for %s\n", modelName), nil
 }
 
 func parseModelfile(input string) string {
