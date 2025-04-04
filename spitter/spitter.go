@@ -84,13 +84,8 @@ func Sync(config SyncConfig) error {
 		}
 	}
 
-	modelfile, err := getModelfile(config.LocalModel, config.OllamaCommand)
-	if err != nil {
-		return err
-	}
-
-	// Combine the FROM statements with the modelfile
-	modelfile = modelFrom + modelfile
+	// Use only the FROM statements as the modelfile
+	modelfile := modelFrom
 
 	fmt.Println("Final Modelfile content:")
 	fmt.Println("------------------------")
