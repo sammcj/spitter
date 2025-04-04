@@ -282,7 +282,8 @@ func parseModelfile(input string) string {
 	lines := strings.Split(input, "\n")
 	var filtered []string
 	for _, line := range lines {
-		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "FROM ") && !strings.HasPrefix(line, "failed to get console mode") {
+		// Only filter out comments and error messages, but keep FROM statements
+		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "failed to get console mode") {
 			filtered = append(filtered, line)
 		}
 	}
@@ -290,6 +291,28 @@ func parseModelfile(input string) string {
 }
 
 func createModel(remoteServer, modelName, modelfile string) error {
+	// Check if the model already exists on the remote server
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// First check if the model exists
+	checkURL := fmt.Sprintf("%s/api/show?name=%s", remoteServer, url.QueryEscape(modelName))
+	fmt.Printf("Checking if model exists at %s\n", checkURL)
+
+	resp, err := client.Get(checkURL)
+	if err != nil {
+		fmt.Printf("Error checking if model exists: %v\n", err)
+	} else {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			fmt.Printf("Model %s already exists on the remote server, will update it\n", modelName)
+		} else {
+			fmt.Printf("Model %s does not exist on the remote server (status: %d), will create it\n", modelName, resp.StatusCode)
+		}
+	}
+
+	// Create or update the model
 	modelCreate := struct {
 		Name      string `json:"name"`
 		Modelfile string `json:"modelfile"`
@@ -307,7 +330,7 @@ func createModel(remoteServer, modelName, modelfile string) error {
 	fmt.Printf("Model name: %s\n", modelName)
 
 	// Create a new HTTP client with a longer timeout
-	client := &http.Client{
+	client = &http.Client{
 		Timeout: 5 * time.Minute, // Set a timeout for model creation
 	}
 
@@ -321,7 +344,7 @@ func createModel(remoteServer, modelName, modelfile string) error {
 	req.Header.Set("Content-Type", "application/json")
 
 	// Execute the request
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error creating model: %w", err)
 	}
