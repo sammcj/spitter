@@ -89,7 +89,13 @@ func Sync(config SyncConfig) error {
 		return err
 	}
 
+	// Combine the FROM statements with the modelfile
 	modelfile = modelFrom + modelfile
+
+	fmt.Println("Final Modelfile content:")
+	fmt.Println("------------------------")
+	fmt.Println(modelfile)
+	fmt.Println("------------------------")
 
 	return createModel(config.RemoteServer, config.LocalModel, modelfile)
 }
