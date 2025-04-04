@@ -357,22 +357,47 @@ func createModel(remoteServer, modelName, modelfile string) error {
 	}
 	tempFile.Close()
 
+	// Print the content of the temporary Modelfile for debugging
+	fmt.Println("Temporary Modelfile content:")
+	fmt.Println("------------------------")
+	tempFileContent, _ := os.ReadFile(tempFilePath)
+	fmt.Println(string(tempFileContent))
+	fmt.Println("------------------------")
+
 	// Try to use curl to create the model from the temporary file
 	fmt.Println("Trying to create model using curl...")
-	curlCmd := exec.Command("curl", "-X", "POST", "-H", "Content-Type: multipart/form-data",
+	curlCmd := exec.Command("curl", "-s", "-X", "POST", "-H", "Content-Type: multipart/form-data",
 		"-F", fmt.Sprintf("name=%s", modelName),
 		"-F", fmt.Sprintf("modelfile=@%s", tempFilePath),
 		fmt.Sprintf("%s/api/create", remoteServer))
 
 	curlOutput, curlErr := curlCmd.CombinedOutput()
 	if curlErr == nil {
-		fmt.Println("Model created successfully using curl.")
-		fmt.Printf("Response: %s\n", string(curlOutput))
+		// Check if the response contains an error
+		if strings.Contains(string(curlOutput), "error") {
+			fmt.Printf("Curl command returned an error: %s\n", string(curlOutput))
+		} else {
+			fmt.Println("Model created successfully using curl.")
+			fmt.Printf("Response: %s\n", string(curlOutput))
+			return nil
+		}
+	} else {
+		fmt.Printf("Curl command failed: %v\n", curlErr)
+		fmt.Printf("Curl output: %s\n", string(curlOutput))
+	}
+
+	// Try using the ollama CLI directly if available
+	fmt.Println("Trying to create model using ollama CLI...")
+	ollamaCmd := exec.Command("ollama", "create", modelName, "-f", tempFilePath)
+	ollamaOutput, ollamaErr := ollamaCmd.CombinedOutput()
+	if ollamaErr == nil {
+		fmt.Println("Model created successfully using ollama CLI.")
+		fmt.Printf("Response: %s\n", string(ollamaOutput))
 		return nil
 	}
 
-	fmt.Printf("Curl command failed: %v\n", curlErr)
-	fmt.Printf("Curl output: %s\n", string(curlOutput))
+	fmt.Printf("Ollama CLI command failed: %v\n", ollamaErr)
+	fmt.Printf("Ollama CLI output: %s\n", string(ollamaOutput))
 
 	// If curl fails, fall back to the API method
 	fmt.Println("Falling back to API method...")
