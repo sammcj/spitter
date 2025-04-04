@@ -303,16 +303,40 @@ func createModel(remoteServer, modelName, modelfile string) error {
 		return err
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/api/create", remoteServer), "application/json", bytes.NewBuffer(data))
+	fmt.Printf("Sending model creation request to %s/api/create\n", remoteServer)
+	fmt.Printf("Model name: %s\n", modelName)
+
+	// Create a new HTTP client with a longer timeout
+	client := &http.Client{
+		Timeout: 5 * time.Minute, // Set a timeout for model creation
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/create", remoteServer), bytes.NewBuffer(data))
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error creating model: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Read response body
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("could not create %s on the remote server (%d): %s", modelName, resp.StatusCode, resp.Status)
+		return fmt.Errorf("could not create %s on the remote server (%d): %s - %s",
+			modelName, resp.StatusCode, resp.Status, string(body))
 	}
 
 	fmt.Println("Model created successfully on the remote server.")
+	fmt.Printf("Response: %s\n", string(body))
+
 	return nil
 }
