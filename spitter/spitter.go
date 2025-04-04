@@ -328,6 +328,7 @@ func createModel(remoteServer, modelName, modelfile string) error {
 
 	fmt.Printf("Sending model creation request to %s/api/create\n", remoteServer)
 	fmt.Printf("Model name: %s\n", modelName)
+	fmt.Printf("JSON payload: %s\n", string(data))
 
 	// Create a new HTTP client with a longer timeout
 	client = &http.Client{
