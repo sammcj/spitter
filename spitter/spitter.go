@@ -281,13 +281,40 @@ func extractModelfileFromManifest(modelName string) (string, error) {
 func parseModelfile(input string) string {
 	lines := strings.Split(input, "\n")
 	var filtered []string
+
+	// Keep track of FROM statements to avoid duplicates
+	fromStatements := make(map[string]bool)
+
 	for _, line := range lines {
-		// Only filter out comments and error messages, but keep FROM statements
-		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "failed to get console mode") {
-			filtered = append(filtered, line)
+		// Skip comments and error messages
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "failed to get console mode") {
+			continue
 		}
+
+		// Handle FROM statements to avoid duplicates
+		if strings.HasPrefix(line, "FROM ") {
+			// Only add FROM statements that reference SHA256 hashes
+			if strings.Contains(line, "@sha256:") {
+				fromStatements[line] = true
+			}
+			// Skip other FROM statements (like local paths)
+			continue
+		}
+
+		// Add all other lines
+		filtered = append(filtered, line)
 	}
-	return strings.Join(filtered, "\n")
+
+	// Add the unique FROM statements at the beginning
+	var result []string
+	for from := range fromStatements {
+		result = append(result, from)
+	}
+
+	// Add the rest of the filtered content
+	result = append(result, filtered...)
+
+	return strings.Join(result, "\n")
 }
 
 func createModel(remoteServer, modelName, modelfile string) error {
@@ -311,6 +338,44 @@ func createModel(remoteServer, modelName, modelfile string) error {
 			fmt.Printf("Model %s does not exist on the remote server (status: %d), will create it\n", modelName, resp.StatusCode)
 		}
 	}
+
+	// Try creating the model using a temporary Modelfile
+	tempFile, err := os.CreateTemp("", "modelfile-*.txt")
+	if err != nil {
+		return fmt.Errorf("error creating temporary Modelfile: %w", err)
+	}
+	tempFilePath := tempFile.Name()
+	defer os.Remove(tempFilePath) // Clean up the temporary file when done
+
+	fmt.Printf("Created temporary Modelfile at %s\n", tempFilePath)
+
+	// Write the Modelfile content to the temporary file
+	_, err = tempFile.WriteString(modelfile)
+	if err != nil {
+		tempFile.Close()
+		return fmt.Errorf("error writing to temporary Modelfile: %w", err)
+	}
+	tempFile.Close()
+
+	// Try to use curl to create the model from the temporary file
+	fmt.Println("Trying to create model using curl...")
+	curlCmd := exec.Command("curl", "-X", "POST", "-H", "Content-Type: multipart/form-data",
+		"-F", fmt.Sprintf("name=%s", modelName),
+		"-F", fmt.Sprintf("modelfile=@%s", tempFilePath),
+		fmt.Sprintf("%s/api/create", remoteServer))
+
+	curlOutput, curlErr := curlCmd.CombinedOutput()
+	if curlErr == nil {
+		fmt.Println("Model created successfully using curl.")
+		fmt.Printf("Response: %s\n", string(curlOutput))
+		return nil
+	}
+
+	fmt.Printf("Curl command failed: %v\n", curlErr)
+	fmt.Printf("Curl output: %s\n", string(curlOutput))
+
+	// If curl fails, fall back to the API method
+	fmt.Println("Falling back to API method...")
 
 	// Create or update the model
 	modelCreate := struct {
