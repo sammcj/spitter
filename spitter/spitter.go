@@ -17,8 +17,9 @@ import (
 )
 
 type SyncConfig struct {
-	LocalModel   string
-	RemoteServer string
+	LocalModel      string
+	RemoteServer    string
+	CustomModelDir  string
 }
 
 type Layer struct {
@@ -35,7 +36,7 @@ func Sync(config SyncConfig) error {
 		return fmt.Errorf("invalid remote server URL: %s", config.RemoteServer)
 	}
 
-	baseDir, err := getOllamaModelsDir()
+	baseDir, err := getOllamaModelsDir(config.CustomModelDir)
 	if err != nil {
 		return err
 	}
@@ -99,12 +100,19 @@ func validateURL(urlStr string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-func getOllamaModelsDir() (string, error) {
+func getOllamaModelsDir(customDir string) (string, error) {
+	// If a custom directory is provided, use it
+	if customDir != "" {
+		return customDir, nil
+	}
+
+	// Otherwise check environment variable
 	ollamaModels := os.Getenv("OLLAMA_MODELS")
 	if ollamaModels != "" && ollamaModels != "*" {
 		return ollamaModels, nil
 	}
 
+	// Fall back to default paths
 	switch runtime.GOOS {
 	case "windows":
 		return filepath.Join(os.Getenv("USERPROFILE"), ".ollama", "models"), nil

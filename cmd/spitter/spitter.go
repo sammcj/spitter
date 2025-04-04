@@ -9,6 +9,8 @@ import (
 )
 
 func main() {
+	var customModelDir string
+
 	var rootCmd = &cobra.Command{
 		Use:   "spitter [local_model] [remote_server]",
 		Short: "Copy local Ollama models to a remote instance",
@@ -16,12 +18,16 @@ func main() {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config := spitter.SyncConfig{
-				LocalModel:   args[0],
-				RemoteServer: args[1],
+				LocalModel:     args[0],
+				RemoteServer:   args[1],
+				CustomModelDir: customModelDir,
 			}
 			return spitter.Sync(config)
 		},
 	}
+
+	// Add flags
+	rootCmd.Flags().StringVarP(&customModelDir, "model-dir", "d", "", "Custom Ollama model directory path")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

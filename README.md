@@ -23,13 +23,21 @@ go install github.com/sammcj/spitter/cmd/spitter@HEAD
 ### As a command-line tool
 
 ```shell
-spitter [local_model] [remote_server]
+spitter [local_model] [remote_server] [flags]
 ```
 
-Example:
+Flags:
+
+- `-d, --model-dir string` : Custom Ollama model directory path
+
+Examples:
 
 ```shell
+# Basic usage
 spitter modelname http://192.168.0.100:11434
+
+# With custom model directory
+spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models
 ```
 
 ### As a Go package
@@ -38,8 +46,9 @@ spitter modelname http://192.168.0.100:11434
 import "github.com/sammcj/spitter/spitter"
 
 config := spitter.SyncConfig{
-    LocalModel:   "modelname",
-    RemoteServer: "http://192.168.0.100:11434",
+    LocalModel:     "modelname",
+    RemoteServer:   "http://192.168.0.100:11434",
+    CustomModelDir: "/path/to/custom/models", // Optional: custom Ollama model directory
 }
 
 err := spitter.Sync(config)
