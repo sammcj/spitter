@@ -71,7 +71,7 @@ func Sync(config SyncConfig) error {
 
 	fmt.Printf("Copying model %s to %s...\n", config.LocalModel, config.RemoteServer)
 
-	var modelFrom string
+	// Upload all the layers
 	for _, layer := range manifest.Layers {
 		if strings.HasPrefix(layer.MediaType, "application/vnd.ollama.image.model") ||
 			strings.HasPrefix(layer.MediaType, "application/vnd.ollama.image.projector") ||
@@ -80,12 +80,14 @@ func Sync(config SyncConfig) error {
 			if err := uploadLayer(config.RemoteServer, blobDir, hash); err != nil {
 				return err
 			}
-			modelFrom += fmt.Sprintf("FROM @sha256:%s\n", hash)
 		}
 	}
 
-	// Use only the FROM statements as the modelfile
-	modelfile := modelFrom
+	// Get the original modelfile
+	modelfile, err := getModelfile(config.LocalModel, config.OllamaCommand)
+	if err != nil {
+		return err
+	}
 
 	fmt.Println("Final Modelfile content:")
 	fmt.Println("------------------------")
@@ -277,10 +279,9 @@ func parseModelfile(input string) string {
 	lines := strings.Split(input, "\n")
 	var filtered []string
 	for _, line := range lines {
-		// Filter out comments, error messages, and FROM statements (we'll add our own FROM)
+		// Filter out comments and error messages, but keep FROM statements
 		if !strings.HasPrefix(line, "#") &&
-		   !strings.HasPrefix(line, "failed to get console mode") &&
-		   !strings.HasPrefix(line, "FROM ") {
+		   !strings.HasPrefix(line, "failed to get console mode") {
 			filtered = append(filtered, line)
 		}
 	}
