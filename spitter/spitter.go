@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 )
@@ -132,9 +133,11 @@ func modelBase(modelName string) string {
 }
 
 func uploadLayer(remoteServer, blobDir, hash string) error {
-	resp, err := http.Head(fmt.Sprintf("%s/api/blobs/sha256:%s", remoteServer, hash))
+	// First check if the blob already exists on the remote server
+	checkURL := fmt.Sprintf("%s/api/blobs/sha256:%s", remoteServer, hash)
+	resp, err := http.Head(checkURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("error checking if blob exists: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -148,13 +151,13 @@ func uploadLayer(remoteServer, blobDir, hash string) error {
 
 	file, err := os.Open(blobFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("error opening blob file: %w", err)
 	}
 	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting file stats: %w", err)
 	}
 
 	bar := progressbar.DefaultBytes(
@@ -162,14 +165,34 @@ func uploadLayer(remoteServer, blobDir, hash string) error {
 		"Uploading",
 	)
 
-	resp, err = http.Post(fmt.Sprintf("%s/api/blobs/sha256:%s", remoteServer, hash), "application/octet-stream", io.TeeReader(file, bar))
+	// Create a new HTTP client with a longer timeout
+	client := &http.Client{
+		Timeout: 30 * time.Minute, // Set a long timeout for large model uploads
+	}
+
+	// Create a new request
+	uploadURL := fmt.Sprintf("%s/api/blobs/sha256:%s", remoteServer, hash)
+	req, err := http.NewRequest("POST", uploadURL, io.TeeReader(file, bar))
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
+
+	// Execute the request
+	resp, err = client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error uploading blob: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("upload failed: %s", resp.Status)
+	// Read response body for error details
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("upload failed: %s - %s", resp.Status, string(body))
 	}
 
 	fmt.Println("Success uploading layer.")
