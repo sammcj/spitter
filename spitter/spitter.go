@@ -22,6 +22,7 @@ type SyncConfig struct {
 	RemoteServer    string
 	CustomModelDir  string
 	OllamaCommand   string // Custom Ollama command (e.g., "docker exec -it ollama ollama")
+	AllModels       bool   // Flag to push all models instead of a single one
 }
 
 type Layer struct {
@@ -33,11 +34,79 @@ type Manifest struct {
 	Layers []Layer `json:"layers"`
 }
 
-func Sync(config SyncConfig) error {
-	if !validateURL(config.RemoteServer) {
-		return fmt.Errorf("invalid remote server URL: %s", config.RemoteServer)
+// listModels returns a list of all available models in the Ollama models directory
+func listModels(baseDir string) ([]string, error) {
+	var models []string
+
+	// Check the standard library models
+	libraryDir := filepath.Join(baseDir, "manifests", "registry.ollama.ai", "library")
+	if _, err := os.Stat(libraryDir); err == nil {
+		entries, err := os.ReadDir(libraryDir)
+		if err != nil {
+			return nil, fmt.Errorf("error reading library models directory: %w", err)
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				modelName := entry.Name()
+				// Replace path separator with colon for model name format
+				modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
+				models = append(models, modelName)
+			}
+		}
 	}
 
+	// Check for hub models
+	hubDir := filepath.Join(baseDir, "manifests", "hub")
+	if _, err := os.Stat(hubDir); err == nil {
+		entries, err := os.ReadDir(hubDir)
+		if err != nil {
+			return nil, fmt.Errorf("error reading hub models directory: %w", err)
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				modelName := "hub/" + entry.Name()
+				// Replace path separator with colon for model name format
+				modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
+				models = append(models, modelName)
+			}
+		}
+	}
+
+	// Check for other models in registry.ollama.ai
+	registryDir := filepath.Join(baseDir, "manifests", "registry.ollama.ai")
+	if _, err := os.Stat(registryDir); err == nil {
+		entries, err := os.ReadDir(registryDir)
+		if err != nil {
+			return nil, fmt.Errorf("error reading registry models directory: %w", err)
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Name() != "library" {
+				subDir := filepath.Join(registryDir, entry.Name())
+				subEntries, err := os.ReadDir(subDir)
+				if err != nil {
+					continue
+				}
+
+				for _, subEntry := range subEntries {
+					if !subEntry.IsDir() {
+						modelName := entry.Name() + "/" + subEntry.Name()
+						// Replace path separator with colon for model name format
+						modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
+						models = append(models, modelName)
+					}
+				}
+			}
+		}
+	}
+
+	return models, nil
+}
+
+// syncSingleModel syncs a single model to the remote server
+func syncSingleModel(config SyncConfig) error {
 	baseDir, err := getOllamaModelsDir(config.CustomModelDir)
 	if err != nil {
 		return err
@@ -95,6 +164,61 @@ func Sync(config SyncConfig) error {
 	fmt.Println("------------------------")
 
 	return createModel(config.RemoteServer, config.LocalModel, modelfile)
+}
+
+func Sync(config SyncConfig) error {
+	if !validateURL(config.RemoteServer) {
+		return fmt.Errorf("invalid remote server URL: %s", config.RemoteServer)
+	}
+
+	// If AllModels flag is set, sync all models
+	if config.AllModels {
+		baseDir, err := getOllamaModelsDir(config.CustomModelDir)
+		if err != nil {
+			return err
+		}
+
+		models, err := listModels(baseDir)
+		if err != nil {
+			return fmt.Errorf("error listing models: %w", err)
+		}
+
+		if len(models) == 0 {
+			return fmt.Errorf("no models found in %s", baseDir)
+		}
+
+		fmt.Printf("Found %d models to sync\n", len(models))
+
+		var syncErrors []string
+		for _, model := range models {
+			fmt.Printf("\n=== Syncing model: %s ===\n", model)
+			modelConfig := config
+			modelConfig.LocalModel = model
+
+			err := syncSingleModel(modelConfig)
+			if err != nil {
+				errMsg := fmt.Sprintf("Error syncing model %s: %v", model, err)
+				syncErrors = append(syncErrors, errMsg)
+				fmt.Println(errMsg)
+				// Continue with other models even if one fails
+				continue
+			}
+		}
+
+		if len(syncErrors) > 0 {
+			fmt.Printf("\n=== Sync completed with %d errors ===\n", len(syncErrors))
+			for _, errMsg := range syncErrors {
+				fmt.Println(errMsg)
+			}
+			return fmt.Errorf("%d models failed to sync", len(syncErrors))
+		}
+
+		fmt.Printf("\n=== Successfully synced all %d models ===\n", len(models))
+		return nil
+	}
+
+	// Otherwise, sync the single specified model
+	return syncSingleModel(config)
 }
 
 func validateURL(urlStr string) bool {

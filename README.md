@@ -30,6 +30,7 @@ spitter [local_model] [remote_server] [flags]
 
 Flags:
 
+- `-a, --all` : Push all models to the remote host
 - `-d, --model-dir string` : Custom Ollama model directory path
 - `-c, --ollama-cmd string` : Custom Ollama command (e.g., "docker exec -it ollama ollama")
 
@@ -39,6 +40,9 @@ Examples:
 # Basic usage
 spitter modelname http://192.168.0.100:11434
 
+# Push all models to the remote host
+spitter modelname http://192.168.0.100:11434 --all
+
 # With custom model directory
 spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models
 
@@ -47,6 +51,9 @@ spitter modelname http://192.168.0.100:11434 --ollama-cmd "docker exec -it ollam
 
 # With both custom model directory and Ollama command
 spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models --ollama-cmd "docker exec -it ollama ollama"
+
+# Push all models with custom model directory
+spitter modelname http://192.168.0.100:11434 --all --model-dir /path/to/custom/models
 ```
 
 ### As a Go package
