@@ -310,13 +310,50 @@ func createModel(remoteServer, modelName, modelfile string) error {
 		}
 	}
 
-	// Create or update the model
-	modelCreate := struct {
-		Name      string `json:"name"`
-		Modelfile string `json:"modelfile"`
-	}{
-		Name:      modelName,
-		Modelfile: modelfile,
+	// Parse the modelfile to extract parameters
+	template, system, parameters := parseModelfileParams(modelfile)
+
+	// Collect all the layer hashes from the modelfile
+	var files map[string]string
+	files = make(map[string]string)
+
+	// Extract FROM statements to get the layer hashes
+	lines := strings.Split(modelfile, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "FROM ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				fromValue := parts[1]
+				if strings.HasPrefix(fromValue, "@sha256:") {
+					hash := fromValue[8:] // Remove the "@sha256:" prefix
+					files[fmt.Sprintf("%s.gguf", hash[:8])] = fmt.Sprintf("sha256:%s", hash)
+				} else if strings.HasPrefix(fromValue, "/") {
+					// Handle absolute path to blob file
+					baseName := filepath.Base(fromValue)
+					if strings.HasPrefix(baseName, "sha256-") {
+						hash := baseName[7:] // Remove the "sha256-" prefix
+						files[fmt.Sprintf("%s.gguf", hash[:8])] = fmt.Sprintf("sha256:%s", hash)
+					}
+				}
+			}
+		}
+	}
+
+	// Create the model creation request
+	type ModelCreateRequest struct {
+		Model      string            `json:"model"`
+		Files      map[string]string `json:"files,omitempty"`
+		Template   string            `json:"template,omitempty"`
+		System     string            `json:"system,omitempty"`
+		Parameters map[string]string `json:"parameters,omitempty"`
+	}
+
+	modelCreate := ModelCreateRequest{
+		Model:      modelName,
+		Files:      files,
+		Template:   template,
+		System:     system,
+		Parameters: parameters,
 	}
 
 	data, err := json.Marshal(modelCreate)
@@ -361,4 +398,54 @@ func createModel(remoteServer, modelName, modelfile string) error {
 	fmt.Printf("Response: %s\n", string(body))
 
 	return nil
+}
+
+// parseModelfileParams extracts template, system, and parameters from a modelfile
+func parseModelfileParams(modelfile string) (string, string, map[string]string) {
+	var template, system string
+	parameters := make(map[string]string)
+
+	lines := strings.Split(modelfile, "\n")
+	inTemplate := false
+	templateLines := []string{}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if inTemplate {
+			if strings.HasPrefix(line, `"""`) || strings.HasPrefix(line, `'''`) {
+				inTemplate = false
+				template = strings.Join(templateLines, "\n")
+			} else {
+				templateLines = append(templateLines, line)
+			}
+			continue
+		}
+
+		if strings.HasPrefix(line, "TEMPLATE ") {
+			inTemplate = true
+			continue
+		}
+
+		if strings.HasPrefix(line, "SYSTEM ") {
+			system = strings.TrimPrefix(line, "SYSTEM ")
+			// Remove quotes if present
+			if len(system) >= 2 && ((system[0] == '"' && system[len(system)-1] == '"') ||
+			                        (system[0] == '\'' && system[len(system)-1] == '\'')) {
+				system = system[1 : len(system)-1]
+			}
+			continue
+		}
+
+		if strings.HasPrefix(line, "PARAMETER ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				paramName := parts[1]
+				paramValue := parts[2]
+				parameters[paramName] = paramValue
+			}
+		}
+	}
+
+	return template, system, parameters
 }
