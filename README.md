@@ -61,6 +61,7 @@ spitter modelname http://192.168.0.100:11434 --all --model-dir /path/to/custom/m
 ```go
 import "github.com/sammcj/spitter/spitter"
 
+// Example 1: Sync a single model
 config := spitter.SyncConfig{
     LocalModel:     "modelname",
     RemoteServer:   "http://192.168.0.100:11434",
@@ -69,6 +70,20 @@ config := spitter.SyncConfig{
 }
 
 err := spitter.Sync(config)
+if err != nil {
+    // Handle error
+}
+
+// Example 2: Sync all models
+configAll := spitter.SyncConfig{
+    LocalModel:     "modelname", // Still required but will be ignored when AllModels is true
+    RemoteServer:   "http://192.168.0.100:11434",
+    CustomModelDir: "/path/to/custom/models", // Optional: custom Ollama model directory
+    OllamaCommand:  "docker exec ollama ollama", // Optional: custom Ollama command
+    AllModels:      true, // Push all models to the remote host
+}
+
+err = spitter.Sync(configAll)
 if err != nil {
     // Handle error
 }
