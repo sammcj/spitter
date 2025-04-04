@@ -1,3 +1,4 @@
 ./cmd/spitter/spitter
 *.tmp
 *.log
+build
