@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,70 +37,63 @@ type Manifest struct {
 
 // listModels returns a list of all available models in the Ollama models directory
 func listModels(baseDir string) ([]string, error) {
+	manifestsRoot := filepath.Join(baseDir, "manifests")
 	var models []string
 
-	// Check the standard library models
-	libraryDir := filepath.Join(baseDir, "manifests", "registry.ollama.ai", "library")
-	if _, err := os.Stat(libraryDir); err == nil {
-		entries, err := os.ReadDir(libraryDir)
-		if err != nil {
-			return nil, fmt.Errorf("error reading library models directory: %w", err)
-		}
-
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				modelName := entry.Name()
-				// Replace path separator with colon for model name format
-				modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
-				models = append(models, modelName)
-			}
-		}
+	if _, err := os.Stat(manifestsRoot); os.IsNotExist(err) {
+		return models, nil // No manifests directory, so no models.
 	}
 
-	// Check for hub models
-	hubDir := filepath.Join(baseDir, "manifests", "hub")
-	if _, err := os.Stat(hubDir); err == nil {
-		entries, err := os.ReadDir(hubDir)
+	err := filepath.WalkDir(manifestsRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil, fmt.Errorf("error reading hub models directory: %w", err)
+			return err
 		}
 
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				modelName := "hub/" + entry.Name()
-				// Replace path separator with colon for model name format
-				modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
-				models = append(models, modelName)
-			}
+		if d.IsDir() {
+			return nil
 		}
-	}
 
-	// Check for other models in registry.ollama.ai
-	registryDir := filepath.Join(baseDir, "manifests", "registry.ollama.ai")
-	if _, err := os.Stat(registryDir); err == nil {
-		entries, err := os.ReadDir(registryDir)
+		relPath, err := filepath.Rel(manifestsRoot, path)
 		if err != nil {
-			return nil, fmt.Errorf("error reading registry models directory: %w", err)
+			return err
 		}
 
-		for _, entry := range entries {
-			if entry.IsDir() && entry.Name() != "library" {
-				subDir := filepath.Join(registryDir, entry.Name())
-				subEntries, err := os.ReadDir(subDir)
-				if err != nil {
-					continue
-				}
+		parts := strings.Split(relPath, string(os.PathSeparator))
+		if len(parts) < 2 {
+			return nil // Not enough parts for a model name
+		}
 
-				for _, subEntry := range subEntries {
-					if !subEntry.IsDir() {
-						modelName := entry.Name() + "/" + subEntry.Name()
-						// Replace path separator with colon for model name format
-						modelName = strings.Replace(modelName, string(os.PathSeparator), ":", -1)
-						models = append(models, modelName)
-					}
-				}
+		var modelName string
+		// The last part is the tag
+		tag := parts[len(parts)-1]
+		// The parts before the tag form the model path
+		modelPathParts := parts[:len(parts)-1]
+
+		// Handle different repository structures
+		if modelPathParts[0] == "registry.ollama.ai" {
+			// Path: registry.ollama.ai/library/model/version or registry.ollama.ai/namespace/model/version
+			if len(modelPathParts) > 2 && modelPathParts[1] == "library" {
+				// It's a library model, name is just "model"
+				modelName = strings.Join(modelPathParts[2:], "/")
+			} else if len(modelPathParts) > 1 {
+				// It's a namespaced model, name is "namespace/model"
+				modelName = strings.Join(modelPathParts[1:], "/")
 			}
+		} else {
+			// Other registries or hub models. The full path is the model name.
+			// e.g., hub/user/model
+			modelName = strings.Join(modelPathParts, "/")
 		}
+
+		if modelName != "" {
+			models = append(models, fmt.Sprintf("%s:%s", modelName, tag))
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error walking models directory: %w", err)
 	}
 
 	return models, nil

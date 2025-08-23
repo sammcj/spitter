@@ -41,7 +41,7 @@ Examples:
 spitter modelname http://192.168.0.100:11434
 
 # Push all models to the remote host
-spitter modelname http://192.168.0.100:11434 --all
+spitter http://192.168.0.100:11434 --all
 
 # With custom model directory
 spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models
@@ -53,7 +53,7 @@ spitter modelname http://192.168.0.100:11434 --ollama-cmd "docker exec -it ollam
 spitter modelname http://192.168.0.100:11434 --model-dir /path/to/custom/models --ollama-cmd "docker exec -it ollama ollama"
 
 # Push all models with custom model directory
-spitter modelname http://192.168.0.100:11434 --all --model-dir /path/to/custom/models
+spitter http://192.168.0.100:11434 --all --model-dir /path/to/custom/models
 ```
 
 ### As a Go package
@@ -76,7 +76,6 @@ if err != nil {
 
 // Example 2: Sync all models
 configAll := spitter.SyncConfig{
-    LocalModel:     "modelname", // Still required but will be ignored when AllModels is true
     RemoteServer:   "http://192.168.0.100:11434",
     CustomModelDir: "/path/to/custom/models", // Optional: custom Ollama model directory
     OllamaCommand:  "docker exec ollama ollama", // Optional: custom Ollama command
